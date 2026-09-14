@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Call Audit Quality Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+:root{--navy:#14213d;--blue:#2563eb;--bg:#f4f7fb;--card:#fff;--text:#1e293b;--muted:#64748b;--border:#e2e8f0;--green:#16a34a;--amber:#d97706;--red:#dc2626}
+*{box-sizing:border-box} body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--text)}
+.header{background:linear-gradient(135deg,#14213d,#1e3a8a);color:white;padding:22px 28px;display:flex;justify-content:space-between;align-items:center}
+.header h1{margin:0;font-size:25px} .header p{margin:6px 0 0;color:#cbd5e1} .badge{background:#ffffff20;border:1px solid #ffffff30;padding:9px 13px;border-radius:10px;font-size:13px}
+.container{max-width:1600px;margin:auto;padding:20px}
+.panel,.card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 2px 8px #0f172a08}
+.panel{padding:18px;margin-bottom:18px} .section-title{font-size:16px;font-weight:700;margin:0 0 14px}
+.filters{display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:12px}
+select,input,button{height:42px;border:1px solid var(--border);border-radius:9px;padding:0 11px;font-size:14px;background:white}
+button{background:var(--blue);color:white;border:none;cursor:pointer;font-weight:600} button.secondary{background:#e8eefc;color:#1d4ed8}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:18px}
+.card{padding:16px} .label{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase} .value{font-size:26px;font-weight:800;margin-top:8px} .sub{font-size:12px;color:var(--muted);margin-top:6px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px} .chartbox{height:320px}
+table{width:100%;border-collapse:collapse;font-size:13px} th{background:#f8fafc;color:#475569;text-align:left;padding:11px;border-bottom:1px solid var(--border)} td{padding:10px;border-bottom:1px solid #eef2f7} tr:hover td{background:#fafcff}
+.status-good{color:var(--green);font-weight:700} .status-mid{color:var(--amber);font-weight:700} .status-low{color:var(--red);font-weight:700}
+.insights{display:grid;grid-template-columns:1fr 1fr;gap:18px} .insight li{margin:12px 0;color:#334155}
+@media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}.filters{grid-template-columns:repeat(2,1fr)}.grid2,.insights{grid-template-columns:1fr}}
+@media(max-width:600px){.kpis{grid-template-columns:repeat(2,1fr)}.filters{grid-template-columns:1fr}.header{display:block}}
+</style>
+</head>
+<body>
+<div class="header">
+ <div><h1>📊 Call Audit Quality Dashboard</h1><p>Pan India Quality Performance & Insights</p></div>
+ <div style="display:flex;gap:10px;align-items:center"><button onclick="loadData()" style="background:#ffffff;color:#1e3a8a">↻ Refresh Data</button><div class="badge" id="updated">Connecting to Google Sheet...</div></div>
+</div>
+<div class="container">
+ <div class="panel">
+  <div class="section-title">🔍 Filters</div>
+  <div class="filters">
+   <select id="month"><option value="">All Months</option></select>
+   <select id="city"><option value="">All Cities</option></select>
+   <select id="unit"><option value="">All Units</option></select>
+   <select id="manager"><option value="">All L1 Managers</option></select>
+   <select id="agent"><option value="">All Agents</option></select>
+   <select id="callType"><option value="">All Call Types</option></select>
+   <select id="calibration"><option value="">All Calibration Types</option></select>
+   <button class="secondary" onclick="resetFilters()">↻ Reset Filters</button>
+  </div>
+ </div>
+
+ <div class="kpis">
+  <div class="card"><div class="label">Total Audits</div><div class="value" id="totalAudits">0</div><div class="sub">Selected records</div></div>
+  <div class="card"><div class="label">Avg Quality Score</div><div class="value" id="avgScore">0%</div><div class="sub">Average audit score</div></div>
+  <div class="card"><div class="label">Avg Error Rate</div><div class="value" id="avgError">0%</div><div class="sub">Lower is better</div></div>
+  <div class="card"><div class="label">Agents Audited</div><div class="value" id="agents">0</div><div class="sub">Unique agents</div></div>
+  <div class="card"><div class="label">Best City</div><div class="value" id="bestCity" style="font-size:19px">-</div><div class="sub">Highest quality score</div></div>
+  <div class="card"><div class="label">Needs Attention</div><div class="value" id="attention">0</div><div class="sub">Agents below 60%</div></div>
+ </div>
+
+ <div class="grid2">
+  <div class="panel"><div class="section-title">📈 Monthly Quality Trend</div><div class="chartbox"><canvas id="trendChart"></canvas></div></div>
+  <div class="panel"><div class="section-title">📊 Audit Volume by City</div><div class="chartbox"><canvas id="cityChart"></canvas></div></div>
+ </div>
+ <div class="grid2">
+  <div class="panel"><div class="section-title">🏙 City Quality Performance</div><div class="chartbox"><canvas id="qualityCityChart"></canvas></div></div>
+  <div class="panel"><div class="section-title">📞 Call Type Performance</div><div class="chartbox"><canvas id="callTypeChart"></canvas></div></div>
+ </div>
+
+ <div class="panel">
+  <div class="section-title">👨‍💼 L1 Manager Performance</div>
+  <div style="overflow:auto"><table id="managerTable"><thead><tr><th>Rank</th><th>L1 Manager</th><th>Audits</th><th>Agents</th><th>Avg Score</th><th>Avg Error</th></tr></thead><tbody></tbody></table></div>
+ </div>
+
+ <div class="insights">
+  <div class="panel"><div class="section-title">🏆 Top 5 Agents</div><ol class="insight" id="topAgents"></ol></div>
+  <div class="panel"><div class="section-title">⚠️ Coaching Attention</div><ul class="insight" id="insightsList"></ul></div>
+ </div>
+
+ <div class="panel">
+  <div class="section-title">👤 Agent Performance</div>
+  <input id="agentSearch" placeholder="🔍 Search agent..." style="width:280px;max-width:100%;margin-bottom:12px">
+  <div style="overflow:auto"><table id="agentTable"><thead><tr><th>Agent</th><th>City</th><th>L1 Manager</th><th>Audits</th><th>Avg Score</th><th>Error Rate</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+ </div>
+</div>
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbz79zr-pWLgejUxqGsKghwCZwEY2b9Tx3H_Gl4V8DKJ56Lk5tns4divAfF3IbjfSn_-/exec";
+let DATA = [];
+const charts={};
+
+async function loadData() {
+  const status = document.getElementById('updated');
+  status.textContent = '⏳ Loading latest Google Sheet data...';
+
+  try {
+    const response = await fetch(API_URL, { cache: 'no-store' });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+
+    const raw = await response.json();
+
+    DATA = raw.map(row => ({
+      auditDate: String(row["Audit Date"] || ""),
+      month: String(row["Month"] || ""),
+      city: String(row["City"] || ""),
+      unit: String(row["Unit"] || ""),
+      manager: String(row["L1 Manager Name"] || ""),
+      agent: String(row["Agent Name"] || ""),
+      callType: String(row["Call Type"] || ""),
+      calibration: String(row["Calibration Type"] || ""),
+      score: Number(row["Avg Score %"]) || 0,
+      error: row["Error Rate %"] === "" || row["Error Rate %"] == null ? null : Number(row["Error Rate %"]),
+      duration: String(row["Call Duration"] || ""),
+      leadId: String(row["Lead ID"] || "")
+    })).filter(x => x.agent && Number.isFinite(x.score));
+
+    initializeDashboard();
+    status.textContent = '🟢 Live Google Sheet | ' + DATA.length + ' records | Updated: ' + new Date().toLocaleString();
+
+  } catch (error) {
+    console.error(error);
+    status.textContent = '🔴 Unable to load Google Sheet data';
+    alert('Unable to load live data. Please check your Apps Script deployment access and Web App URL.');
+  }
+}
+const ids=['month','city','unit','manager','agent','callType','calibration'];
+
+function unique(field){return [...new Set(DATA.map(x=>x[field]).filter(x=>x && x!=='nan'))].sort()}
+function fill(id,field){const el=document.getElementById(id); const current=el.value; el.innerHTML='<option value="">All '+id.replace(/([A-Z])/g,' $1').replace(/^./,c=>c.toUpperCase())+'s</option>'; unique(field).forEach(v=>{let o=document.createElement('option');o.value=v;o.textContent=v;el.appendChild(o)}); el.value=current}
+let filtersBound=false;
+function initializeDashboard(){
+  fill('month','month');fill('city','city');fill('unit','unit');fill('manager','manager');fill('agent','agent');fill('callType','callType');fill('calibration','calibration');
+  if(!filtersBound){
+    ids.forEach(id=>document.getElementById(id).addEventListener('change',render));
+    filtersBound=true;
+  }
+  render();
+}
+document.getElementById('agentSearch').addEventListener('input',renderTables);
+
+function filtered(){
+ let f={};ids.forEach(id=>f[id]=document.getElementById(id).value);
+ return DATA.filter(x=>(!f.month||x.month===f.month)&&(!f.city||x.city===f.city)&&(!f.unit||x.unit===f.unit)&&(!f.manager||x.manager===f.manager)&&(!f.agent||x.agent===f.agent)&&(!f.callType||x.callType===f.callType)&&(!f.calibration||x.calibration===f.calibration));
+}
+const avg=(a)=>a.length?a.reduce((s,x)=>s+x,0)/a.length:0;
+const group=(arr,key)=>{let m={};arr.forEach(x=>{(m[x[key]||'Unknown']??=[]).push(x)});return m}
+const pct=x=>(x||0).toFixed(1)+'%';
+
+function chart(id,type,labels,data,label){
+ if(charts[id])charts[id].destroy();
+ charts[id]=new Chart(document.getElementById(id),{type,data:{labels,datasets:[{label,data,borderWidth:2,borderRadius:6,tension:.35}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:type==='line'}},scales:{y:{beginAtZero:true,max:100}}}});
+}
+function render(){
+ const d=filtered(); updateKpis(d); renderCharts(d); renderTables();
+}
+function updateKpis(d){
+ document.getElementById('totalAudits').textContent=d.length.toLocaleString();
+ document.getElementById('avgScore').textContent=pct(avg(d.map(x=>x.score)));
+ const errs=d.map(x=>x.error).filter(x=>x!==null&&!isNaN(x));document.getElementById('avgError').textContent=pct(avg(errs)*100);
+ document.getElementById('agents').textContent=new Set(d.map(x=>x.agent)).size;
+ let cg=group(d,'city'), ranks=Object.entries(cg).map(([k,v])=>[k,avg(v.map(x=>x.score))]).sort((a,b)=>b[1]-a[1]);
+ document.getElementById('bestCity').textContent=ranks.length?ranks[0][0]:'-';
+ let ag=group(d,'agent'), low=Object.values(ag).filter(v=>avg(v.map(x=>x.score))<60).length;document.getElementById('attention').textContent=low;
+}
+function renderCharts(d){
+ let mg=group(d,'month');let ml=Object.keys(mg).sort();chart('trendChart','line',ml,ml.map(k=>avg(mg[k].map(x=>x.score))),'Avg Quality Score %');
+ let cg=group(d,'city');let cl=Object.keys(cg);chart('cityChart','bar',cl,cl.map(k=>cg[k].length),'Audit Count');
+ chart('qualityCityChart','bar',cl,cl.map(k=>avg(cg[k].map(x=>x.score))),'Avg Quality Score %');
+ let tg=group(d,'callType'),tl=Object.keys(tg);chart('callTypeChart','bar',tl,tl.map(k=>avg(tg[k].map(x=>x.score))),'Avg Quality Score %');
+}
+function status(s){return s>=85?['Excellent','status-good']:s>=70?['Average','status-mid']:['Needs Improvement','status-low']}
+function renderTables(){
+ const d=filtered(), search=document.getElementById('agentSearch').value.toLowerCase();
+ let mg=group(d,'manager');let rows=Object.entries(mg).map(([k,v])=>({k,v,score:avg(v.map(x=>x.score)),err:avg(v.map(x=>x.error).filter(x=>x!==null))*100})).sort((a,b)=>b.score-a.score);
+ document.querySelector('#managerTable tbody').innerHTML=rows.map((r,i)=>`<tr><td>${i+1}</td><td>${r.k||'Unknown'}</td><td>${r.v.length}</td><td>${new Set(r.v.map(x=>x.agent)).size}</td><td>${pct(r.score)}</td><td>${pct(r.err)}</td></tr>`).join('');
+ let ag=group(d,'agent');let ar=Object.entries(ag).map(([k,v])=>({k,v,score:avg(v.map(x=>x.score)),err:avg(v.map(x=>x.error).filter(x=>x!==null))*100})).filter(r=>r.k.toLowerCase().includes(search)).sort((a,b)=>b.score-a.score);
+ document.querySelector('#agentTable tbody').innerHTML=ar.map(r=>{let st=status(r.score);return `<tr><td>${r.k}</td><td>${r.v[0].city}</td><td>${r.v[0].manager}</td><td>${r.v.length}</td><td>${pct(r.score)}</td><td>${pct(r.err)}</td><td class="${st[1]}">${st[0]}</td></tr>`}).join('');
+ document.getElementById('topAgents').innerHTML=ar.slice(0,5).map(r=>`<li><b>${r.k}</b> — ${pct(r.score)} (${r.v.length} audits)</li>`).join('');
+ let low=ar.filter(r=>r.score<60).slice(0,5), weakCity=Object.entries(group(d,'city')).map(([k,v])=>[k,avg(v.map(x=>x.score))]).sort((a,b)=>a[1]-b[1])[0];
+ let ins=[]; if(low.length)ins.push(`🔴 ${low.length} displayed agent(s) are below 60% quality score.`); if(weakCity)ins.push(`⚠️ Lowest city quality: <b>${weakCity[0]}</b> at ${pct(weakCity[1])}.`); if(d.length)ins.push(`📋 Current selection contains <b>${d.length}</b> audits across <b>${new Set(d.map(x=>x.agent)).size}</b> agents.`);ins.push(`💡 Use the filters above to drill down by month, city, manager, agent or calibration type.`);
+ document.getElementById('insightsList').innerHTML=ins.map(x=>`<li>${x}</li>`).join('');
+}
+function resetFilters(){ids.forEach(id=>document.getElementById(id).value='');document.getElementById('agentSearch').value='';render()}
+loadData();
+</script>
+</body></html>
